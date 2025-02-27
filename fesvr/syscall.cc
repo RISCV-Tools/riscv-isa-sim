@@ -137,7 +137,7 @@ struct riscv_statx
       __spare2(), __spare3()
 #else
       __spare2()
-#endif      
+#endif
       {}
 };
 #endif
@@ -161,6 +161,7 @@ syscall_t::syscall_t(htif_t* htif)
   table[64] = &syscall_t::sys_write;
   table[67] = &syscall_t::sys_pread;
   table[68] = &syscall_t::sys_pwrite;
+  table[78] = &syscall_t::sys_readlinkat;
   table[79] = &syscall_t::sys_fstatat;
   table[80] = &syscall_t::sys_fstat;
   table[93] = &syscall_t::sys_exit;
@@ -220,7 +221,7 @@ void syscall_t::handle_syscall(command_t cmd)
 
 reg_t syscall_t::sys_exit(reg_t code, reg_t a1, reg_t a2, reg_t a3, reg_t a4, reg_t a5, reg_t a6)
 {
-  htif->exitcode = code << 1 | 1;
+  htif->htif_exit(code << 1 | 1);
   return 0;
 }
 
@@ -511,4 +512,17 @@ void syscall_t::set_chroot(const char* where)
   }
 
   chroot = buf2;
+}
+
+reg_t syscall_t::sys_readlinkat(reg_t dirfd, reg_t ppathname, reg_t ppathname_size,
+                                reg_t pbuf, reg_t bufsiz, reg_t a5, reg_t a6)
+{
+  std::vector<char> pathname(ppathname_size);
+  memif->read(ppathname, ppathname_size, pathname.data());
+
+  std::vector<char> buf(bufsiz);
+  ssize_t ret = sysret_errno(AT_SYSCALL(readlinkat, dirfd, pathname.data(), buf.data(), bufsiz));
+  if (ret > 0)
+    memif->write(pbuf, ret, buf.data());
+  return ret;
 }
